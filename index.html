@@ -1,1 +1,1007 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>大井川鐵道 奥大井湖上駅 3D Web Simulator</title>
+    <!-- Tailwind CSS for UI controls -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js Engine & OrbitControls -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            margin: 0;
+            overflow: hidden;
+            background-color: #07111e;
+            color: #f8fafc;
+            user-select: none;
+        }
+        /* Custom UI glassmorphism style */
+        .glass-panel {
+            background: rgba(11, 22, 40, 0.82);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+        /* Range slider styling */
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 18px;
+            width: 18px;
+            border-radius: 50%;
+            background: #38bdf8;
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(56, 189, 248, 0.6);
+            transition: transform 0.1s;
+        }
+        input[type=range]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+        .btn-active {
+            background-color: #0284c7 !important;
+            color: #ffffff !important;
+            border-color: #38bdf8 !important;
+            box-shadow: 0 0 12px rgba(56, 189, 248, 0.4);
+        }
+        ::-webkit-scrollbar {
+            width: 5px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body class="w-screen h-screen relative overflow-hidden">
 
+    <!-- WebGL Canvas Container -->
+    <div id="webgl-container" class="w-full h-full absolute inset-0"></div>
+
+    <!-- Floating Glassmorphism Dashboard UI -->
+    <div class="absolute top-4 left-4 right-4 md:left-6 md:right-auto md:w-96 glass-panel rounded-2xl p-4 shadow-2xl z-50 flex flex-col gap-3 max-h-[92vh] overflow-y-auto">
+        
+        <!-- Header -->
+        <div class="flex items-center justify-between border-b border-slate-700/60 pb-2.5">
+            <div>
+                <h1 class="text-sm font-bold tracking-tight text-white flex items-center gap-2">
+                    <span class="inline-block w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                    奥大井湖上駅 3D シミュレーター
+                </h1>
+                <p class="text-[11px] text-slate-400 mt-0.5">大井川鐵道 井川線 (Lake Sessyo View)</p>
+            </div>
+            <span id="time-badge" class="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-sky-500/20 text-sky-300 border border-sky-500/30">12:00 (快晴)</span>
+        </div>
+
+        <!-- Camera View Modes -->
+        <div class="space-y-1.5">
+            <label class="text-[11px] font-medium text-slate-300 flex items-center gap-1">
+                📷 視点アングル (Camera Viewpoints)
+            </label>
+            <div class="grid grid-cols-2 gap-1.5">
+                <button id="cam-photo" onclick="setCameraView('photo')" class="py-1.5 px-2 text-xs rounded-xl bg-slate-800/90 text-slate-200 border border-slate-700/80 hover:bg-slate-700 font-medium transition btn-active">
+                    📸 展望台アングル (Photo)
+                </button>
+                <button id="cam-drone" onclick="setCameraView('drone')" class="py-1.5 px-2 text-xs rounded-xl bg-slate-800/90 text-slate-200 border border-slate-700/80 hover:bg-slate-700 font-medium transition">
+                    🛸 湖上ドローンスカイ
+                </button>
+                <button id="cam-platform" onclick="setCameraView('platform')" class="py-1.5 px-2 text-xs rounded-xl bg-slate-800/90 text-slate-200 border border-slate-700/80 hover:bg-slate-700 font-medium transition">
+                    🚉 奥大井湖上駅ホーム
+                </button>
+                <button id="cam-train" onclick="setCameraView('train')" class="py-1.5 px-2 text-xs rounded-xl bg-slate-800/90 text-slate-200 border border-slate-700/80 hover:bg-slate-700 font-medium transition">
+                    🚃 列車追従カメラ
+                </button>
+            </div>
+        </div>
+
+        <!-- Season / Foliage Controls -->
+        <div class="space-y-1.5 pt-1 border-t border-slate-700/60">
+            <label class="text-[11px] font-medium text-slate-300 flex items-center gap-1">
+                🌿 季節表現 (Season)
+            </label>
+            <div class="grid grid-cols-3 gap-1.5">
+                <button id="season-summer" onclick="setSeason('summer')" class="py-1.5 px-2 text-xs rounded-xl bg-emerald-600/30 text-emerald-200 border border-emerald-500/50 hover:bg-emerald-600/50 font-medium transition btn-active">
+                    🌿 新緑・夏 (Photo)
+                </button>
+                <button id="season-autumn" onclick="setSeason('autumn')" class="py-1.5 px-2 text-xs rounded-xl bg-slate-800/90 text-slate-300 border border-slate-700/80 hover:bg-slate-700 font-medium transition">
+                    🍁 紅葉 (Autumn)
+                </button>
+                <button id="season-winter" onclick="setSeason('winter')" class="py-1.5 px-2 text-xs rounded-xl bg-slate-800/90 text-slate-300 border border-slate-700/80 hover:bg-slate-700 font-medium transition">
+                    ❄️ 冬雪 (Winter)
+                </button>
+            </div>
+        </div>
+
+        <!-- Time of Day Controls -->
+        <div class="space-y-1.5 pt-1 border-t border-slate-700/60">
+            <div class="flex justify-between text-[11px] font-medium text-slate-300">
+                <span>⏰ 時間経過 (Time of Day)</span>
+                <span id="time-display" class="font-bold text-sky-400 font-mono">12:00</span>
+            </div>
+            <input id="time-slider" type="range" min="0" max="24" step="0.1" value="12" 
+                   class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-400">
+            
+            <div class="grid grid-cols-4 gap-1">
+                <button onclick="setTimePreset(6.5)" class="py-1 px-1.5 bg-slate-800/80 hover:bg-slate-700 text-[11px] rounded-lg text-amber-300 border border-slate-700 transition">朝</button>
+                <button onclick="setTimePreset(12)" class="py-1 px-1.5 bg-slate-800/80 hover:bg-slate-700 text-[11px] rounded-lg text-sky-300 border border-slate-700 transition">昼晴</button>
+                <button onclick="setTimePreset(17.2)" class="py-1 px-1.5 bg-slate-800/80 hover:bg-slate-700 text-[11px] rounded-lg text-orange-400 border border-slate-700 transition">夕景</button>
+                <button onclick="setTimePreset(21)" class="py-1 px-1.5 bg-slate-800/80 hover:bg-slate-700 text-[11px] rounded-lg text-indigo-300 border border-slate-700 transition">夜間</button>
+            </div>
+        </div>
+
+        <!-- Weather Controls -->
+        <div class="space-y-1.5 pt-1 border-t border-slate-700/60">
+            <label class="text-[11px] font-medium text-slate-300">🌧️ 天候 (Weather)</label>
+            <div class="grid grid-cols-4 gap-1">
+                <button id="weather-sunny" onclick="setWeather('sunny')" class="py-1.5 px-1 rounded-xl text-[11px] font-medium bg-sky-600 text-white border border-sky-400 transition btn-active">
+                    ☀️ 快晴
+                </button>
+                <button id="weather-rain" onclick="setWeather('rain')" class="py-1.5 px-1 rounded-xl text-[11px] font-medium bg-slate-800/90 text-slate-300 border border-slate-700 transition">
+                    🌧️ 雨
+                </button>
+                <button id="weather-snow" onclick="setWeather('snow')" class="py-1.5 px-1 rounded-xl text-[11px] font-medium bg-slate-800/90 text-slate-300 border border-slate-700 transition">
+                    ❄️ 雪
+                </button>
+                <button id="weather-fog" onclick="setWeather('fog')" class="py-1.5 px-1 rounded-xl text-[11px] font-medium bg-slate-800/90 text-slate-300 border border-slate-700 transition">
+                    🌫️ 霧
+                </button>
+            </div>
+        </div>
+
+        <!-- Audio & Interactive Options -->
+        <div class="space-y-2 pt-1 border-t border-slate-700/60">
+            <div class="flex items-center justify-between">
+                <span class="text-[11px] font-medium text-slate-300">🔊 サウンド & 列車操作</span>
+                <div class="flex gap-1.5">
+                    <button id="btn-audio" onclick="toggleAudio()" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-sky-400 text-xs font-semibold rounded-lg border border-slate-700 transition">
+                        🔊 音声: OFF
+                    </button>
+                    <button id="btn-whistle" onclick="playWhistleSound()" class="px-2.5 py-1 bg-amber-600/80 hover:bg-amber-500 text-white text-xs font-semibold rounded-lg shadow transition">
+                        🎺 警笛
+                    </button>
+                </div>
+            </div>
+            <div class="flex items-center justify-between pt-1">
+                <span class="text-[11px] text-slate-400">列車走行速度</span>
+                <input id="train-speed-slider" type="range" min="0.2" max="2.5" step="0.1" value="1.0" 
+                       class="w-32 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-400">
+            </div>
+        </div>
+
+        <!-- Auto Cycle Button -->
+        <div class="pt-1 flex items-center justify-between border-t border-slate-700/60 text-xs text-slate-400">
+            <span>24時間時間オートサイクル</span>
+            <button id="btn-auto-cycle" onclick="toggleAutoCycle()" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-sky-400 text-[11px] font-semibold rounded-lg border border-slate-700 transition">
+                自動進行 ▶
+            </button>
+        </div>
+
+    </div>
+
+    <!-- Station Info Popup Modal -->
+    <div id="station-info-modal" class="hidden absolute bottom-6 right-6 glass-panel rounded-2xl p-4 max-w-sm z-50 text-xs border border-sky-500/40 shadow-2xl">
+        <div class="flex justify-between items-center border-b border-slate-700 pb-2 mb-2">
+            <h2 class="font-bold text-sky-300 text-sm flex items-center gap-1.5">
+                🚉 奥大井湖上駅 (Okuoi Kojo Station)
+            </h2>
+            <button onclick="document.getElementById('station-info-modal').classList.add('hidden')" class="text-slate-400 hover:text-white font-bold text-base px-1">✕</button>
+        </div>
+        <p class="text-slate-200 leading-relaxed">
+            静岡県榛原郡川根本町にある大井川鐵道井川線の駅。「長島ダム」建設に伴い誕生した接岨湖（せっそこ）に突出した半島の上に位置し、両側を赤色の鉄橋「奥大井レインボーブリッジ」で挟まれた幻想的な景観を誇ります。ホーム後ろには湖畔の寺院が佇んでいます。
+        </p>
+        <div class="mt-2 text-[11px] text-slate-400 bg-slate-800/60 p-2 rounded-lg">
+            📍 標高: 490m<br>
+            🏆 「Cool Japan Award 2019」受賞 / 秘境駅100選
+        </div>
+    </div>
+
+    <!-- WebGL & Application Logic Script -->
+    <script>
+        // Core WebGL state setup
+        let scene, camera, renderer, controls;
+        let waterMesh, skyMesh, sunLight, ambientLight, fog;
+        let trainGroup, weatherParticlesGroup, treesGroup, cloudsGroup;
+        
+        let currentSeason = 'summer';
+        let currentWeather = 'sunny';
+        let cameraMode = 'photo';
+        let isAudioActive = false;
+        let audioCtx = null;
+        let trainSoundNode = null, waterSoundNode = null, birdSoundNode = null;
+        let isAutoCycle = false, autoCycleTimer = null;
+        let trainProgress = 0, trainSpeed = 1.0;
+
+        // Curve path for Okuoi Rainbow Bridge matching reference photo bend
+        let curvePath;
+
+        function initScene() {
+            const container = document.getElementById('webgl-container');
+            scene = new THREE.Scene();
+
+            // Fog for atmospheric perspective
+            fog = new THREE.FogExp2(0x87ceeb, 0.0035);
+            scene.fog = fog;
+
+            // Camera setup with broad view for panorama
+            camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.5, 800);
+            
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1.1;
+            container.appendChild(renderer.domElement);
+
+            // Controls
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.maxPolarAngle = Math.PI / 2 - 0.02; // Prevent going below ground/water
+
+            // Build Scene Components
+            setupLights();
+            setupSkyAndClouds();
+            setupWaterSurface();
+            setupTerrainAndPeninsula();
+            setupBridgeAndStation();
+            setupTrainModel();
+            generateFoliage('summer');
+            generateForegroundPineTrees();
+
+            // Set Initial View (Matches Viewpoint Photograph)
+            setCameraView('photo');
+
+            // Event Listeners
+            window.addEventListener('resize', onWindowResize);
+
+            // Start Render Loop
+            animate();
+        }
+
+        // Setup Sunlight and Ambient Illumination
+        function setupLights() {
+            ambientLight = new THREE.AmbientLight(0xdff0ff, 0.7);
+            scene.add(ambientLight);
+
+            sunLight = new THREE.DirectionalLight(0xfff8e7, 1.3);
+            sunLight.position.set(60, 90, 40);
+            sunLight.castShadow = true;
+            sunLight.shadow.mapSize.width = 2048;
+            sunLight.shadow.mapSize.height = 2048;
+            sunLight.shadow.camera.near = 10;
+            sunLight.shadow.camera.far = 300;
+            const d = 100;
+            sunLight.shadow.camera.left = -d;
+            sunLight.shadow.camera.right = d;
+            sunLight.shadow.camera.top = d;
+            sunLight.shadow.camera.bottom = -d;
+            scene.add(sunLight);
+        }
+
+        // Build Dynamic Sky & Volumetric Clouds
+        function setupSkyAndClouds() {
+            const skyGeo = new THREE.SphereGeometry(400, 32, 15);
+            const skyMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, side: THREE.BackSide });
+            skyMesh = new THREE.Mesh(skyGeo, skyMat);
+            scene.add(skyMesh);
+
+            // Fluffy White Clouds Group
+            cloudsGroup = new THREE.Group();
+            const cloudMat = new THREE.MeshStandardMaterial({
+                color: 0xffffff,
+                roughness: 0.9,
+                transparent: true,
+                opacity: 0.88
+            });
+
+            for (let i = 0; i < 28; i++) {
+                const cloudCluster = new THREE.Group();
+                const pCount = 5 + Math.floor(Math.random() * 6);
+                for (let j = 0; j < pCount; j++) {
+                    const pGeo = new THREE.DodecahedronGeometry(6 + Math.random() * 8, 1);
+                    const pMesh = new THREE.Mesh(pGeo, cloudMat);
+                    pMesh.position.set(
+                        (Math.random() - 0.5) * 15,
+                        (Math.random() - 0.5) * 5,
+                        (Math.random() - 0.5) * 15
+                    );
+                    cloudCluster.add(pMesh);
+                }
+                const angle = (i / 28) * Math.PI * 2;
+                const dist = 180 + Math.random() * 80;
+                cloudCluster.position.set(
+                    Math.cos(angle) * dist,
+                    65 + Math.random() * 30,
+                    Math.sin(angle) * dist
+                );
+                cloudsGroup.add(cloudCluster);
+            }
+            scene.add(cloudsGroup);
+        }
+
+        // Build Vibrant Emerald/Turquoise Water Surface
+        function setupWaterSurface() {
+            const waterGeo = new THREE.PlaneGeometry(350, 350, 64, 64);
+            const waterMat = new THREE.MeshStandardMaterial({
+                color: 0x00a896, // Saturated turquoise emerald color from reference photo
+                roughness: 0.1,
+                metalness: 0.3,
+                transparent: true,
+                opacity: 0.92
+            });
+
+            waterMesh = new THREE.Mesh(waterGeo, waterMat);
+            waterMesh.rotation.x = -Math.PI / 2;
+            waterMesh.position.y = 0;
+            scene.add(waterMesh);
+        }
+
+        // Build Surrounding Mountains & Central Horseshoe Peninsula
+        function setupTerrainAndPeninsula() {
+            // Central Island/Peninsula
+            const islandGeo = new THREE.CylinderGeometry(14, 26, 18, 32);
+            const islandMat = new THREE.MeshStandardMaterial({ color: 0x22542a, roughness: 0.8 });
+            const island = new THREE.Mesh(islandGeo, islandMat);
+            island.position.set(0, 8, 0);
+            island.receiveShadow = true;
+            island.castShadow = true;
+            scene.add(island);
+
+            // Peninsula Rocky Bank Trim
+            const bankGeo = new THREE.CylinderGeometry(20, 30, 4, 32);
+            const bankMat = new THREE.MeshStandardMaterial({ color: 0x8a7251, roughness: 0.9 });
+            const bank = new THREE.Mesh(bankGeo, bankMat);
+            bank.position.set(0, 1.8, 0);
+            scene.add(bank);
+
+            // Surrounding Mountains Ring (Horseshoe Valley)
+            const mountainsGroup = new THREE.Group();
+            const mtMat = new THREE.MeshStandardMaterial({ color: 0x1a4321, roughness: 0.9 });
+
+            const mountainPos = [
+                {x: -110, z: -80, r: 65, h: 80},
+                {x: -40, z: -120, r: 75, h: 95},
+                {x: 40, z: -115, r: 80, h: 90},
+                {x: 110, z: -70, r: 70, h: 85},
+                {x: -120, z: 20, r: 60, h: 70},
+                {x: 125, z: 30, r: 65, h: 75},
+                {x: -80, z: 90, r: 55, h: 65},
+                {x: 80, z: 100, r: 60, h: 70}
+            ];
+
+            mountainPos.forEach(m => {
+                const mtGeo = new THREE.ConeGeometry(m.r, m.h, 16);
+                const mt = new THREE.Mesh(mtGeo, mtMat);
+                mt.position.set(m.x, m.h / 2 - 5, m.z);
+                mt.castShadow = true;
+                mt.receiveShadow = true;
+                mountainsGroup.add(mt);
+            });
+            scene.add(mountainsGroup);
+        }
+
+        // Build Red Truss Bridge (奥大井レインボーブリッジ) and Station + Temple Behind
+        function setupBridgeAndStation() {
+            // Straight Track Path across the bridge (Linearly spanning across the lake)
+            curvePath = new THREE.CatmullRomCurve3([
+                new THREE.Vector3(-110, 18.5, -5),
+                new THREE.Vector3(-50, 18.5, -5),
+                new THREE.Vector3(0, 18.5, -5),
+                new THREE.Vector3(50, 18.5, -5),
+                new THREE.Vector3(110, 18.5, -5)
+            ]);
+
+            // Concrete Piers in Water
+            const pierGeo = new THREE.CylinderGeometry(1.4, 2.0, 18, 16);
+            const pierMat = new THREE.MeshStandardMaterial({ color: 0x787d82, roughness: 0.7 });
+            
+            [-75, -40, 40, 75].forEach(xPos => {
+                const pier = new THREE.Mesh(pierGeo, pierMat);
+                pier.position.set(xPos, 9, -5);
+                pier.castShadow = true;
+                scene.add(pier);
+            });
+
+            // Red Steel Truss Structure (Straight Line)
+            const bridgeGroup = new THREE.Group();
+            const redTrussMat = new THREE.MeshStandardMaterial({ color: 0xd92323, roughness: 0.4, metalness: 0.3 });
+
+            // Rails Deck Base
+            const deckGeo = new THREE.TubeGeometry(curvePath, 80, 1.1, 8, false);
+            const deckMesh = new THREE.Mesh(deckGeo, redTrussMat);
+            deckMesh.position.y = -0.6;
+            bridgeGroup.add(deckMesh);
+
+            // Straight Side Guardrails
+            const railMat = new THREE.MeshBasicMaterial({ color: 0xb91c1c });
+            const guardGeo = new THREE.TubeGeometry(curvePath, 80, 0.12, 6, false);
+            
+            const guardMeshLeft = new THREE.Mesh(guardGeo, railMat);
+            guardMeshLeft.position.set(0, 0.8, -1.2);
+            
+            const guardMeshRight = new THREE.Mesh(guardGeo, railMat);
+            guardMeshRight.position.set(0, 0.8, 1.2);
+            
+            bridgeGroup.add(guardMeshLeft);
+            bridgeGroup.add(guardMeshRight);
+
+            scene.add(bridgeGroup);
+
+            // Central Island Station Platform & Actual Okuoi Kojo Station Waiting Room
+            const stationGroup = new THREE.Group();
+            stationGroup.position.set(0, 17.2, -5);
+
+            // Concrete Platform Base
+            const platGeo = new THREE.BoxGeometry(22, 0.5, 3.2);
+            const platMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8 });
+            const platform = new THREE.Mesh(platGeo, platMat);
+            platform.position.set(0, 0.3, 2.2);
+            stationGroup.add(platform);
+
+            // --- 奥大井湖上駅の駅舎（特徴的な赤い屋根の待合室） ---
+            const stationHutGroup = new THREE.Group();
+            stationHutGroup.position.set(0, 0.55, 2.2);
+
+            // 壁面・構造
+            const hutBodyGeo = new THREE.BoxGeometry(3.6, 2.0, 2.0);
+            const hutBodyMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.6 });
+            const hutBody = new THREE.Mesh(hutBodyGeo, hutBodyMat);
+            hutBody.position.set(0, 1.0, 0);
+            hutBody.castShadow = true;
+            stationHutGroup.add(hutBody);
+
+            // 窓ガラス表現
+            const glassGeo = new THREE.BoxGeometry(3.0, 0.8, 2.02);
+            const glassMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.1, metalness: 0.8 });
+            const glassWin = new THREE.Mesh(glassGeo, glassMat);
+            glassWin.position.set(0, 1.2, 0);
+            stationHutGroup.add(glassWin);
+
+            // 特徴的な赤い三角屋根
+            const stationRoofGeo = new THREE.ConeGeometry(2.8, 1.2, 4);
+            const stationRoofMat = new THREE.MeshStandardMaterial({ color: 0xd92323, roughness: 0.4 });
+            const stationRoof = new THREE.Mesh(stationRoofGeo, stationRoofMat);
+            stationRoof.position.set(0, 2.6, 0);
+            stationRoof.rotation.y = Math.PI / 4;
+            stationHutGroup.add(stationRoof);
+
+            stationGroup.add(stationHutGroup);
+
+            // --- ホームの後ろに配置する奥大井湖上駅周辺の寺院 (Temple) ---
+            const templeGroup = new THREE.Group();
+            templeGroup.position.set(0, 0.55, 5.8); // 駅ホームの後方へ配置
+
+            const templeWood = 0x5c3a21;
+            const templeWall = 0xf5f5dc;
+            const templeRoof = 0x2b2b2b;
+
+            // 寺院の基壇（石垣・木造基盤）
+            const tBaseGeo = new THREE.BoxGeometry(5.0, 0.6, 4.0);
+            const tBaseMat = new THREE.MeshStandardMaterial({ color: 0x6b7280, roughness: 0.8 });
+            const tBase = new THREE.Mesh(tBaseGeo, tBaseMat);
+            tBase.position.y = 0.3;
+            templeGroup.add(tBase);
+
+            // 本堂建物本体
+            const tBodyGeo = new THREE.BoxGeometry(4.0, 2.2, 3.0);
+            const tBodyMat = new THREE.MeshStandardMaterial({ color: templeWall, roughness: 0.7 });
+            const tBody = new THREE.Mesh(tBodyGeo, tBodyMat);
+            tBody.position.set(0, 1.7, 0);
+            tBody.castShadow = true;
+            templeGroup.add(tBody);
+
+            // 寺院の重厚な和風屋根（入母屋・寄棟風）
+            const tRoofGeo = new THREE.BoxGeometry(4.6, 0.4, 3.6);
+            const tRoofMat = new THREE.MeshStandardMaterial({ color: templeRoof, roughness: 0.5 });
+            const tRoof = new THREE.Mesh(tRoofGeo, tRoofMat);
+            tRoof.position.set(0, 3.0, 0);
+            templeGroup.add(tRoof);
+
+            const tRoofTopGeo = new THREE.ConeGeometry(3.0, 1.2, 4);
+            const tRoofTop = new THREE.Mesh(tRoofTopGeo, tRoofMat);
+            tRoofTop.position.set(0, 3.8, 0);
+            tRoofTop.rotation.y = Math.PI / 4;
+            templeGroup.add(tRoofTop);
+
+            stationGroup.add(templeGroup);
+
+            // Clickable Hitbox for Station Information Popup
+            const hitGeo = new THREE.SphereGeometry(5, 16, 16);
+            const hitMat = new THREE.MeshBasicMaterial({ visible: false });
+            const stationHitbox = new THREE.Mesh(hitGeo, hitMat);
+            stationHitbox.name = "station-hitbox";
+            stationGroup.add(stationHitbox);
+
+            scene.add(stationGroup);
+
+            // Click interaction listener
+            window.addEventListener('click', onDocumentClick);
+        }
+
+        // Build Red & Cream Oigawa Express Train Model
+        function setupTrainModel() {
+            trainGroup = new THREE.Group();
+
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0xd92323, roughness: 0.3 });
+            const creamMat = new THREE.MeshStandardMaterial({ color: 0xfffbeb, roughness: 0.4 });
+            const windowMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.1, metalness: 0.8 });
+            const darkMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.7 });
+
+            // Locomotive Engine
+            const engine = new THREE.Group();
+            
+            // Lower red chassis
+            const chassisGeo = new THREE.BoxGeometry(2.2, 1.2, 4.5);
+            const chassis = new THREE.Mesh(chassisGeo, bodyMat);
+            chassis.position.y = 1.0;
+            engine.add(chassis);
+
+            // Upper cream cabin
+            const cabinGeo = new THREE.BoxGeometry(2.1, 1.1, 2.5);
+            const cabin = new THREE.Mesh(cabinGeo, creamMat);
+            cabin.position.set(0, 2.15, -0.8);
+            engine.add(cabin);
+
+            // Front Grill / Light Block
+            const grillGeo = new THREE.BoxGeometry(1.8, 0.8, 0.2);
+            const grill = new THREE.Mesh(grillGeo, darkMat);
+            grill.position.set(0, 1.1, 2.3);
+            engine.add(grill);
+
+            // Headlight
+            const lightGeo = new THREE.SphereGeometry(0.2, 12, 12);
+            const lightMat = new THREE.MeshBasicMaterial({ color: 0xffedd5 });
+            const headlight = new THREE.Mesh(lightGeo, lightMat);
+            headlight.position.set(0, 1.2, 2.4);
+            engine.add(lightGeo ? headlight : null); // safe fallback
+
+            trainGroup.add(engine);
+
+            // Passenger Carriage 1
+            const car1 = new THREE.Group();
+            car1.position.z = -5.2;
+
+            const carBodyGeo = new THREE.BoxGeometry(2.1, 1.8, 4.4);
+            const carBody = new THREE.Mesh(carBodyGeo, bodyMat);
+            carBody.position.y = 1.3;
+            car1.add(carBody);
+
+            // Cream side stripe
+            const stripeGeo = new THREE.BoxGeometry(2.15, 0.4, 4.3);
+            const stripe = new THREE.Mesh(stripeGeo, creamMat);
+            stripe.position.y = 1.3;
+            car1.add(stripe);
+
+            // Windows
+            const winGeo = new THREE.BoxGeometry(2.2, 0.5, 3.2);
+            const win = new THREE.Mesh(winGeo, windowMat);
+            win.position.y = 1.6;
+            car1.add(win);
+
+            trainGroup.add(car1);
+
+            // Passenger Carriage 2
+            const car2 = car1.clone();
+            car2.position.z = -10.0;
+            trainGroup.add(car2);
+
+            // Set initial position on bridge
+            trainGroup.position.set(-110, 18.5, -5);
+            scene.add(trainGroup);
+        }
+
+        // Generate Trees and Foliage across Central Peninsula & Surrounding Mountains (Avoiding railway track interference)
+        function generateFoliage(season) {
+            if (treesGroup) scene.remove(treesGroup);
+            treesGroup = new THREE.Group();
+
+            const leafColors = season === 'summer' 
+                ? [0x15803d, 0x166534, 0x22c55e, 0x16a34a] 
+                : (season === 'autumn' ? [0xd97706, '#b45309', 0xca8a04, 0xef4444] : [0xe2e8f0, 0x94a3b8, 0x334155]);
+
+            const trunkMat = new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.9 });
+
+            // 1. 中央の半島/山の上（駅周辺）の木々 - 線路軌道（Z=-5付近、Xが-110から110）への干渉を確実に避ける
+            let generatedCount = 0;
+            let safetyLimit = 0;
+            while (generatedCount < 80 && safetyLimit < 300) {
+                safetyLimit++;
+                const angle = Math.random() * Math.PI * 2;
+                const dist = 5 + Math.random() * 11; // 鉄道の通る中央付近（Z=-5付近）を避けるため最小距離を確保
+                const tx = Math.cos(angle) * dist;
+                const tz = Math.sin(angle) * dist;
+
+                // 鉄道の線路帯（Zが -7 から -3 の範囲、かつ X が -120 から 120 の範囲）をクリアランス確保して完全に除外
+                if (Math.abs(tz - (-5)) < 3.5 && Math.abs(tx) < 115) {
+                    continue; 
+                }
+
+                const tree = new THREE.Group();
+                const radius = 0.8 + Math.random() * 1.2;
+                const height = 2.2 + Math.random() * 2.5;
+                const leafColor = leafColors[Math.floor(Math.random() * leafColors.length)];
+
+                const trunkGeo = new THREE.CylinderGeometry(0.15, 0.25, height * 0.4, 8);
+                const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+                trunk.position.y = height * 0.2;
+                tree.add(trunk);
+
+                const leafGeo = new THREE.ConeGeometry(radius, height, 8);
+                const leafMat = new THREE.MeshStandardMaterial({ color: leafColor, roughness: 0.8 });
+                const leaf = new THREE.Mesh(leafGeo, leafMat);
+                leaf.position.y = height * 0.7;
+                leaf.castShadow = true;
+                tree.add(leaf);
+
+                tree.position.set(tx, 17 + Math.random() * 1.5, tz);
+                treesGroup.add(tree);
+                generatedCount++;
+            }
+
+            // 2. 周囲の山々（V字峡谷を囲む山岳斜面）にたくさんの木々を配置
+            const mountainPos = [
+                {x: -110, z: -80, r: 65, h: 80},
+                {x: -40, z: -120, r: 75, h: 95},
+                {x: 40, z: -115, r: 80, h: 90},
+                {x: 110, z: -70, r: 70, h: 85},
+                {x: -120, z: 20, r: 60, h: 70},
+                {x: 125, z: 30, r: 65, h: 75},
+                {x: -80, z: 90, r: 55, h: 65},
+                {x: 80, z: 100, r: 60, h: 70}
+            ];
+
+            mountainPos.forEach(m => {
+                for (let j = 0; j < 35; j++) {
+                    const tree = new THREE.Group();
+                    const radius = 1.2 + Math.random() * 1.8;
+                    const height = 3.5 + Math.random() * 3.5;
+                    const leafColor = leafColors[Math.floor(Math.random() * leafColors.length)];
+
+                    const trunkGeo = new THREE.CylinderGeometry(0.25, 0.4, height * 0.4, 8);
+                    const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+                    trunk.position.y = height * 0.2;
+                    tree.add(trunk);
+
+                    const leafGeo = new THREE.ConeGeometry(radius, height, 8);
+                    const leafMat = new THREE.MeshStandardMaterial({ color: leafColor, roughness: 0.8 });
+                    const leaf = new THREE.Mesh(leafGeo, leafMat);
+                    leaf.position.y = height * 0.7;
+                    leaf.castShadow = true;
+                    tree.add(leaf);
+
+                    const rDist = Math.random() * (m.r * 0.75);
+                    const theta = Math.random() * Math.PI * 2;
+                    const tx = m.x + Math.cos(theta) * rDist;
+                    const tz = m.z + Math.sin(theta) * rDist;
+                    
+                    const distFromCenter = Math.sqrt((tx - m.x)*(tx - m.x) + (tz - m.z)*(tz - m.z));
+                    const ratio = 1 - (distFromCenter / m.r);
+                    const ty = Math.max(2, (m.h * ratio) - 5 + Math.random() * 3);
+
+                    tree.position.set(tx, ty, tz);
+                    treesGroup.add(tree);
+                }
+            });
+
+            scene.add(treesGroup);
+        }
+
+        // Foreground Pine Trees (Scaled down so they frame the photo without blocking the view)
+        function generateForegroundPineTrees() {
+            const fgGroup = new THREE.Group();
+            const pineMat = new THREE.MeshStandardMaterial({ color: 0x0f3818, roughness: 0.9 });
+            const trunkMat = new THREE.MeshStandardMaterial({ color: 0x2e1003 });
+
+            const pineCoords = [
+                {x: 32, y: 22, z: 45, s: 0.55},
+                {x: 37, y: 24, z: 42, s: 0.65},
+                {x: 40, y: 20, z: 50, s: 0.5}
+            ];
+
+            pineCoords.forEach(p => {
+                const pine = new THREE.Group();
+                const trunkGeo = new THREE.CylinderGeometry(0.4 * p.s, 0.6 * p.s, 12 * p.s, 8);
+                const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+                trunk.position.y = 6 * p.s;
+                pine.add(trunk);
+
+                for (let tier = 0; tier < 4; tier++) {
+                    const coneGeo = new THREE.ConeGeometry((3.2 - tier * 0.6) * p.s, 4.5 * p.s, 8);
+                    const cone = new THREE.Mesh(coneGeo, pineMat);
+                    cone.position.y = (7 + tier * 2.6) * p.s;
+                    pine.add(cone);
+                }
+
+                pine.position.set(p.x, p.y, p.z);
+                fgGroup.add(pine);
+            });
+            scene.add(fgGroup);
+        }
+
+        // Camera View Mode Switcher
+        function setCameraView(mode) {
+            cameraMode = mode;
+            ['photo', 'drone', 'platform', 'train'].forEach(m => {
+                const btn = document.getElementById(`cam-${m}`);
+                if (btn) {
+                    if (m === mode) btn.classList.add('btn-active');
+                    else btn.classList.remove('btn-active');
+                }
+            });
+
+            if (mode === 'photo') {
+                camera.position.set(28, 48, 62);
+                controls.target.set(0, 12, -5);
+            } else if (mode === 'drone') {
+                camera.position.set(0, 110, 80);
+                controls.target.set(0, 10, -5);
+            } else if (mode === 'platform') {
+                camera.position.set(0, 18.8, -1.8);
+                controls.target.set(-30, 18.8, -5);
+            }
+        }
+
+        // Season Switcher
+        function setSeason(season) {
+            currentSeason = season;
+            ['summer', 'autumn', 'winter'].forEach(s => {
+                const btn = document.getElementById(`season-${s}`);
+                if (btn) {
+                    if (s === season) btn.classList.add('btn-active');
+                    else btn.classList.remove('btn-active');
+                }
+            });
+
+            if (season === 'summer') waterMesh.material.color.setHex(0x00a896);
+            else if (season === 'autumn') waterMesh.material.color.setHex(0x119da4);
+            else if (season === 'winter') waterMesh.material.color.setHex(0x334155);
+
+            generateFoliage(season);
+        }
+
+        // Time of Day Slider & Dynamic Atmosphere
+        function setTimePreset(hour) {
+            document.getElementById('time-slider').value = hour;
+            updateTime(hour);
+        }
+
+        document.getElementById('time-slider').addEventListener('input', (e) => {
+            updateTime(parseFloat(e.target.value));
+        });
+
+        function updateTime(hour) {
+            const h = Math.floor(hour);
+            const m = Math.floor((hour - h) * 60);
+            const timeStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+            document.getElementById('time-display').textContent = timeStr;
+
+            const angle = ((hour - 6) / 24) * Math.PI * 2;
+            const sunX = Math.cos(angle) * 120;
+            const sunY = Math.sin(angle) * 120;
+            sunLight.position.set(sunX, Math.max(sunY, 5), 40);
+
+            let skyColor = 0x38bdf8;
+            let fogColor = 0x87ceeb;
+            let sunIntensity = 1.3;
+
+            if (hour >= 5 && hour < 8) {
+                skyColor = 0xfdba74;
+                fogColor = 0xfdba74;
+                sunIntensity = 0.8;
+            } else if (hour >= 8 && hour < 16) {
+                skyColor = currentWeather === 'rain' ? 0x64748b : 0x38bdf8;
+                fogColor = currentWeather === 'rain' ? 0x475569 : 0x87ceeb;
+                sunIntensity = currentWeather === 'rain' ? 0.4 : 1.3;
+            } else if (hour >= 16 && hour < 19) {
+                skyColor = 0xf97316;
+                fogColor = 0xea580c;
+                sunIntensity = 0.7;
+            } else {
+                skyColor = 0x070a12;
+                fogColor = 0x0f172a;
+                sunIntensity = 0.15;
+            }
+
+            skyMesh.material.color.setHex(skyColor);
+            fog.color.setHex(fogColor);
+            sunLight.intensity = sunIntensity;
+        }
+
+        // Weather System Manager
+        function setWeather(type) {
+            currentWeather = type;
+            ['sunny', 'rain', 'snow', 'fog'].forEach(w => {
+                const btn = document.getElementById(`weather-${w}`);
+                if (btn) {
+                    if (w === type) btn.classList.add('btn-active');
+                    else btn.classList.remove('btn-active');
+                }
+            });
+
+            if (weatherParticlesGroup) scene.remove(weatherParticlesGroup);
+            weatherParticlesGroup = new THREE.Group();
+
+            if (type === 'rain' || type === 'snow') {
+                const count = type === 'rain' ? 300 : 200;
+                const pGeo = type === 'rain' ? new THREE.CylinderGeometry(0.04, 0.04, 1.2) : new THREE.DodecahedronGeometry(0.18);
+                const pMat = new THREE.MeshBasicMaterial({ color: type === 'rain' ? 0x38bdf8 : 0xffffff, transparent: true, opacity: 0.7 });
+
+                for (let i = 0; i < count; i++) {
+                    const p = new THREE.Mesh(pGeo, pMat);
+                    p.position.set(
+                        (Math.random() - 0.5) * 160,
+                        Math.random() * 60 + 5,
+                        (Math.random() - 0.5) * 160
+                    );
+                    weatherParticlesGroup.add(p);
+                }
+                scene.add(weatherParticlesGroup);
+            }
+
+            updateTime(parseFloat(document.getElementById('time-slider').value));
+        }
+
+        // Synthesized Audio Controller
+        function toggleAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+
+            if (isAudioActive) {
+                audioCtx.suspend();
+                isAudioActive = false;
+                document.getElementById('btn-audio').textContent = "🔊 音声: OFF";
+                document.getElementById('btn-audio').classList.remove('btn-active');
+            } else {
+                audioCtx.resume();
+                isAudioActive = true;
+                document.getElementById('btn-audio').textContent = "🔊 音声: ON";
+                document.getElementById('btn-audio').classList.add('btn-active');
+                startAmbientSound();
+            }
+        }
+
+        function startAmbientSound() {
+            const bufferSize = audioCtx.sampleRate * 2;
+            const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+            const output = noiseBuffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+                output[i] = Math.random() * 2 - 1;
+            }
+
+            const whiteNoise = audioCtx.createBufferSource();
+            whiteNoise.buffer = noiseBuffer;
+            whiteNoise.loop = true;
+
+            const filter = audioCtx.createBiquadFilter();
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(300, audioCtx.currentTime);
+
+            const gain = audioCtx.createGain();
+            gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+
+            whiteNoise.connect(filter);
+            filter.connect(gain);
+            gain.connect(audioCtx.destination);
+            whiteNoise.start();
+        }
+
+        function playWhistleSound() {
+            if (!audioCtx) toggleAudio();
+            if (!audioCtx) return;
+
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(440, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.6);
+
+            gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.8);
+
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.8);
+        }
+
+        // Raycasting for Clickable Station Marker
+        function onDocumentClick(event) {
+            const raycaster = new THREE.Raycaster();
+            const mouse = new THREE.Vector2();
+
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(scene.children, true);
+
+            for (let i = 0; i < intersects.length; i++) {
+                if (intersects[i].object.name === "station-hitbox") {
+                    document.getElementById('station-info-modal').classList.remove('hidden');
+                    break;
+                }
+            }
+        }
+
+        // Speed Control
+        document.getElementById('train-speed-slider').addEventListener('input', (e) => {
+            trainSpeed = parseFloat(e.target.value);
+        });
+
+        // 24 Hour Time Cycle Toggle
+        function toggleAutoCycle() {
+            isAutoCycle = !isAutoCycle;
+            const btn = document.getElementById('btn-auto-cycle');
+            if (isAutoCycle) {
+                btn.textContent = "停止 ⏹";
+                btn.classList.add('btn-active');
+                autoCycleTimer = setInterval(() => {
+                    let slider = document.getElementById('time-slider');
+                    let val = parseFloat(slider.value) + 0.1;
+                    if (val > 24) val = 0;
+                    slider.value = val;
+                    updateTime(val);
+                }, 100);
+            } else {
+                btn.textContent = "自動進行 ▶";
+                btn.classList.remove('btn-active');
+                clearInterval(autoCycleTimer);
+            }
+        }
+
+        // Resize Handler
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // Main Animation & Render Loop
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (waterMesh) {
+                const time = Date.now() * 0.0015;
+                waterMesh.position.y = Math.sin(time) * 0.15;
+            }
+
+            if (curvePath && trainGroup) {
+                trainProgress += 0.0008 * trainSpeed;
+                if (trainProgress > 1) trainProgress = 0;
+
+                const trainPos = curvePath.getPointAt(trainProgress);
+                const tangent = curvePath.getTangentAt(trainProgress);
+
+                trainGroup.position.copy(trainPos);
+                
+                const angle = Math.atan2(tangent.x, tangent.z);
+                trainGroup.rotation.y = angle + Math.PI;
+
+                if (cameraMode === 'train') {
+                    camera.position.set(trainPos.x + 8, trainPos.y + 6, trainPos.z + 12);
+                    controls.target.copy(trainPos);
+                }
+            }
+
+            if (weatherParticlesGroup) {
+                weatherParticlesGroup.children.forEach(p => {
+                    p.position.y -= currentWeather === 'rain' ? 0.8 : 0.2;
+                    if (p.position.y < 0) p.position.y = 50;
+                });
+            }
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('load', initScene);
+    </script>
+</body>
+</html>
